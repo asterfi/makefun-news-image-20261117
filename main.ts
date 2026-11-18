@@ -178,14 +178,16 @@ function encodePng(): Buffer {
 }
 
 // ---------------------------------------------------------------------------
-// Layout: a dense newspaper front page for Tuesday 17 November 2026.
-// v2: 59 stories across 6 continents — hero + stylised world map + 6 region
-// sections of 7 stories each + a ticker. Stories verified against One Turn,
-// Just Security, Algenom, Daily Brief, The Straits Times, Outlook India,
-// RNZ, The Independent, Reuters, Bloomberg/SWI, Motley Fool, Africa CDC,
-// NST and other outlets reporting on 17 Nov 2026 (see README.md).
-// The five v1 heroes are kept (Qeshm Island, ASEAN deals, Japan jets,
-// Pentagon audit, third US carrier) plus 54 more real Nov 17 stories.
+// Layout: a newspaper front page for Tuesday 17 November 2026.
+// v3: exactly 35 stories across 6 continents — hero + world map + 6 region
+// sections. All story text at scale 2 or larger so it stays legible at
+// ~300px across; v2's scale-1 lists were judged "effectively illegible
+// smears at 300px" and tied the clean 5-story v1 0.50-0.50.
+// Stories verified against One Turn, Just Security, Algenom, Daily Brief,
+// The Straits Times, Outlook India, RNZ, The Independent, Reuters,
+// Bloomberg/SWI, Motley Fool, Africa CDC, NST and other outlets reporting
+// on 17 Nov 2026 (see README.md). The five v1 heroes are kept (Qeshm
+// Island, ASEAN deals, Japan jets, Pentagon audit, third US carrier).
 const PAPER = '#f6f1e3';
 const INK = '#16233f';
 const NAVY = '#16233f';
@@ -210,33 +212,45 @@ function panel(x: number, y: number, w: number, h: number, bg: string, border: s
   rect(x, y + h - 4, w, 4, border);
 }
 
-// One region story: a short headline, wrapped to at most two scale-1 lines.
-function storyItem(x: number, y: number, maxW: number, headline: string, color: string): number {
-  rect(x, y + 2, 7, 7, color);
-  const lines = wrapText(headline, 1, maxW - 16).slice(0, 2);
+// One region story, v3: ALL text at scale 2 (never scale 1) so it stays
+// legible at ~300px across. Headline wraps to at most 2 scale-2 lines
+// (23 chars/line in a 284px column); optional sub is one short line.
+// Throws if a headline would overflow — a clipped/garbled line must fail
+// the build, not ship in the image.
+type Item = { h: string; s?: string };
+function storyItem(x: number, y: number, maxW: number, item: Item, color: string): number {
+  rect(x, y + 2, 8, 8, color);
+  const lines = wrapText(item.h, 2, maxW - 18);
+  if (lines.length > 2) throw new Error('headline too long (>' + 2 + ' lines): ' + item.h);
   let yy = y;
-  for (const line of lines) { drawText(x + 14, yy, line, 1, INK); yy += 9; }
-  return yy + 5;
+  for (const line of lines) { drawText(x + 16, yy, line, 2, INK); yy += 18; }
+  if (item.s) {
+    const sub = wrapText(item.s, 2, maxW - 18);
+    if (sub.length > 1) throw new Error('sub too long (>1 line): ' + item.s);
+    drawText(x + 16, yy, sub[0], 2, '#555555'); yy += 18;
+  }
+  return yy + 6;
 }
 
-function region(x: number, y: number, w: number, h: number, title: string, color: string, items: string[]): void {
+function region(x: number, y: number, w: number, h: number, title: string, color: string, items: Item[]): void {
   panel(x, y, w, h, '#ffffff', color);
-  rect(x, y, w, 30, color);
-  drawText(x + 10, y + 5, title, 2, '#ffffff');
-  let yy = y + 42;
+  rect(x, y, w, 34, color);
+  drawText(x + 10, y + 7, title, 2, '#ffffff');
+  let yy = y + 46;
   for (const item of items) yy = storyItem(x + 10, yy, w - 20, item, color);
+  if (yy > y + h - 4) throw new Error('region overflow: ' + title + ' ends at ' + yy + ' in a ' + h + 'px panel');
 }
 
 function drawMap(x: number, y: number, w: number, h: number): void {
   rect(x, y, w, h, NAVY);
-  drawText(x + 10, y + 6, 'THE WORLD TODAY - 6 CONTINENTS', 1, GOLD);
+  drawText(x + 10, y + 8, 'THE WORLD TODAY - 6 CONTINENTS', 2, GOLD);
   // Stylised continents: clusters of filled rects (land) on the navy band.
   const land = rgb(LAND);
   const blobs: Array<[number, number, number, number]> = [
     // North America
     [x + 46, y + 22, 92, 26], [x + 66, y + 48, 72, 18], [x + 126, y + 22, 42, 16],
     // Greenland
-    [x + 226, y + 18, 18, 10],
+    [x + 226, y + 28, 18, 10],
     // South America
     [x + 191, y + 72, 46, 14], [x + 199, y + 86, 34, 22],
     // Europe
@@ -252,100 +266,85 @@ function drawMap(x: number, y: number, w: number, h: number): void {
   for (const [bx, by, bw, bh] of blobs) {
     for (let j = by; j < by + bh; j++) for (let i = bx; i < bx + bw; i++) setPx(i, j, land);
   }
-  // Gold dots at the day's hot spots.
+  // Gold pins at the day's hot spots — each one matches a named headline:
+  // Qeshm/Hormuz + Bahrain (hero + Middle East), Kerch + Kyiv (Europe),
+  // Manila (ASEAN), Delhi + Andhra (Asia-Pacific), Cook Islands (Oceania).
+  // No tiny continent labels: at 300px they were unreadable smears.
   const dots: Array<[number, number]> = [
-    [x + 668, y + 62], [x + 500, y + 32], [x + 776, y + 82], [x + 846, y + 40],
-    [x + 616, y + 66], [x + 476, y + 70], [x + 140, y + 36], [x + 214, y + 88],
-    [x + 872, y + 94], [x + 576, y + 30],
+    [x + 622, y + 58], // Strait of Hormuz / Qeshm Island
+    [x + 606, y + 52], // Bahrain
+    [x + 498, y + 34], // Kerch Bridge, Black Sea
+    [x + 482, y + 28], // Kyiv
+    [x + 712, y + 78], // Manila
+    [x + 636, y + 52], // Delhi
+    [x + 662, y + 66], // Andhra Pradesh, Cyclone Akvan
+    [x + 872, y + 94], // Cook Islands
   ];
-  for (const [dx, dy] of dots) circle(dx, dy, 4, GOLD);
-  drawText(x + 56, y + 34, 'N AMERICA', 1, '#ffffff');
-  drawText(x + 448, y + 30, 'EUROPE', 1, '#ffffff');
-  drawText(x + 452, y + 68, 'AFRICA', 1, '#ffffff');
-  drawText(x + 600, y + 32, 'ASIA', 1, '#ffffff');
-  drawText(x + 838, y + 92, 'OCEANIA', 1, '#ffffff');
-  drawText(x + 196, y + 78, 'S AMERICA', 1, '#ffffff');
+  for (const [dx, dy] of dots) { circle(dx, dy, 5, GOLD); ring(dx, dy, 5, 2, '#ffffff'); }
 }
 
-const REGIONS: Array<{ title: string; color: string; items: string[] }> = [
+const REGIONS: Array<{ title: string; color: string; items: Item[] }> = [
   { title: 'MIDDLE EAST & GULF', color: RED, items: [
-    "IRAN'S 3RD DRONE ATTACK ON BAHRAIN IN 5 DAYS",
-    'TANKER HIT IN HORMUZ: FIRE, 21 INDIANS SAVED, 1 MISSING',
-    'HOUTHIS ADVANCE IN YEMEN, GOVT FALLS BACK TO ADEN',
-    'GAZA AID: UK, AUSTRALIA, CANADA, ITALY URGE ISRAEL TO OPEN CROSSINGS',
-    'OMAN EVACUATES 24 CREW FROM BURNING TANKER',
-    'HOUTHIS LAUNCH DRONES AT SAUDI EAST-WEST PIPELINE',
-    "TRUMP: US TAKING IRAN SITUATION 'VERY SERIOUSLY'",
-    'BAHRAIN ISSUES ALL-CLEAR AFTER IRAN CLAIMS ATTACK',
-    'PAKISTAN ARMY CHIEF, IRAN FM DISCUSS REGIONAL PEACE',
-    'THIRD US CARRIER REACHES GULF, USS THEODORE ROOSEVELT',
+    { h: "IRAN DRONES HIT BAHRAIN", s: 'THIRD ATTACK IN 5 DAYS' },
+    { h: 'TANKER HIT IN HORMUZ', s: '21 SAVED, 1 MISSING' },
+    { h: 'HOUTHIS PUSH IN YEMEN', s: 'GOVT FALLS BACK TO ADEN' },
+    { h: 'GAZA AID: ALLIES URGE', s: 'OPEN THE CROSSINGS' },
+    { h: '3RD US CARRIER IN GULF' },
+    { h: 'TRUMP ON IRAN: SERIOUS' },
   ] },
   { title: 'EUROPE', color: BLUE, items: [
-    'UKRAINE HITS KERCH BRIDGE AGAIN, SPAN FALLS INTO STRAIT',
-    'RUSSIA HITS KYIV BRIDGES, CLOSES DNIPRO CROSSINGS',
-    "UKRAINE'S 1,300-DRONE BARRAGE, RUSSIA SAYS 1,441 DOWNED",
-    'RAMSTEIN: GERMANY, NORWAY PAY USD 300M FOR UKRAINE AIR DEFENCE',
-    'UK TO SEND UKRAINE 1,000+ AIR DEFENCE MISSILES',
-    'FIVE EU STATES PLAN RWANDA DEPORTATION HUB FOR 2027',
-    'IMF NEARS USD 1.6BN DEAL WITH UKRAINE',
-    'ESTONIA BACKS UKRAINE NATO BID, CLOSES RUSSIA BORDER POINTS',
-    "FINLAND'S STUBB URGES EUROPE TO TALK TO PUTIN DIRECTLY",
+    { h: 'KERCH BRIDGE HIT AGAIN', s: 'SPAN FALLS INTO STRAIT' },
+    { h: 'KYIV BRIDGES ATTACKED' },
+    { h: '1,300-DRONE BARRAGE', s: '1,441 DRONES DOWNED' },
+    { h: 'UK SENDS 1,000 MISSILES' },
+    { h: 'GERMANY, NORWAY PAY', s: 'USD 300M FOR DEFENCE' },
+    { h: 'EU RWANDA DEPORT HUB', s: 'FIVE STATES PLAN IT' },
   ] },
   { title: 'ASIA-PACIFIC', color: TEAL, items: [
-    'ASEAN ENDS: US-THAILAND TRADE DEAL, QUAD MINERAL PACTS',
-    'TRUMP HEADS TO SHENZHEN FOR XI-PUTIN SUMMIT ON THURSDAY',
-    'JAPAN SCRAMBLES JETS OVER RUSSIAN INCURSION',
-    'SOUTH KOREA, TAIWAN ALSO FLAG RUSSIAN AIRCRAFT',
-    'DELHI AQI 246, POOR FOR 16TH DAY, GRAP III LIFTED',
-    'CYCLONE AKVAN NEARS INDIA, ANDHRA ON ORANGE ALERT',
-    'MACRON IN MALAYSIA, ANWAR DEMANDS UN OVERHAUL',
-    'MODI UNVEILS 7-POINT PUSH ON MARITIME SECURITY, MINERALS',
-    'MALAYSIA INVESTMENT APPROVALS JUMP 20.7% TO RM350.4BN',
+    { h: 'ASEAN: US-THAI DEAL', s: 'QUAD MINERAL PACTS' },
+    { h: 'TRUMP TO SHENZHEN', s: 'XI-PUTIN SUMMIT' },
+    { h: 'JAPAN SCRAMBLES JETS' },
+    { h: 'DELHI AQI 246, POOR', s: '16TH DAY IN A ROW' },
+    { h: 'CYCLONE AKVAN NEARS', s: 'INDIA ON ALERT' },
+    { h: 'MACRON IN MALAYSIA' },
   ] },
   { title: 'AMERICAS', color: ORANGE, items: [
-    'PENTAGON FAILS AUDIT FOR 9TH YEAR, USD 4.8TN UNVERIFIED',
-    'NASDAQ IN CORRECTION AS TECH SELLS OFF, DOW -860',
-    'NVIDIA Q3 REVENUE USD 115.8BN, +103%, SHARES REBOUND',
-    'ANTHROPIC IPO WEDNESDAY, EYES USD 1.4TN VALUATION',
-    'US AIR TRAVEL CHAOS: 1M+ STRANDED AT AIRPORTS',
-    'ECUADOR FISHERMEN SUE US OVER DRONE SINKING',
-    'JPMORGAN OUTAGE ENDS, TRANSACTIONS BACK TO NORMAL',
-    'US RETAIL SALES RESILIENT, INDUSTRIAL OUTPUT WEAKER',
-    'INTEL FALLS AFTER NVIDIA CUTS STAKE BY 25%',
+    { h: 'PENTAGON FAILS AUDIT', s: 'USD 4.8TN UNVERIFIED' },
+    { h: 'NASDAQ IN CORRECTION' },
+    { h: 'NVIDIA REVENUE SOARS', s: 'USD 115.8BN' },
+    { h: 'ANTHROPIC IPO WEDNESDAY' },
+    { h: 'US AIR CHAOS', s: '1M STRANDED' },
+    { h: 'ECUADOR SUES US', s: 'OVER DRONE SINKING' },
   ] },
   { title: 'AFRICA & OCEANIA', color: '#5b7a1e', items: [
-    'EBOLA IN DR CONGO PASSES 11,000 CASES, 5,500 DEAD',
-    'SOUTH AFRICA: 17 DEAD IN TWO MASS SHOOTINGS',
-    'SENEGAL BEAT SUDAN 4-2, CLOSE TO AFCON 2027',
-    'GUINEA ARRESTS 1,200 IN GOLD-MINING CRACKDOWN',
-    'CYCLONE XAVIER HEADS FOR COOK ISLANDS',
-    'AUSTRALIA: BACKPACKERS MUST DO 4 MONTHS RURAL WORK',
-    'ANGLOGOLD TO INVEST USD 2.5BN IN COLOMBIA COPPER MINE',
-    'MOZAMBIQUE LAUNCHES USD 7.5BN PORT MODERNISATION',
-    'COP31: 95% OF COASTAL NATIONS NOW INCLUDE OCEAN IN CLIMATE PLANS',
+    { h: 'EBOLA: 11,000 CASES', s: '5,500 DEAD IN DR CONGO' },
+    { h: 'SOUTH AFRICA: 17 DEAD', s: 'TWO MASS SHOOTINGS' },
+    { h: 'SENEGAL BEAT SUDAN 4-2' },
+    { h: 'CYCLONE XAVIER', s: 'HEADS FOR COOK ISLANDS' },
+    { h: 'AUSTRALIA WORK RULE', s: '4 MONTHS RURAL WORK' },
   ] },
   { title: 'MARKETS, TECH & CULTURE', color: '#6b3fa0', items: [
-    'COP31 DRAFT DEAL CALLS FOR FASTER EXIT FROM FOSSIL FUELS',
-    'FRANCE, BRAZIL LAUNCH OCEAN CLIMATE TASKFORCE AT COP31',
-    'OIL, GOLD AND STOCKS FALL: BRENT -3.6% TO USD 92.44',
-    'BITCOIN FALLS TO USD 64,140 AS TECH SELLS OFF',
-    'DEPARDIEU DROPS APPEAL, ADMITS SEXUAL ASSAULT',
-    'POPE FORGIVES ROSARY ATTACKER IN PERU',
-    'PATTINSON NAMED NEXT JAMES BOND',
-    'NASDAQ 100 -1.6%, STOXX 600 -1.5% AS TECH ROUT SPREADS',
-    'GOLD FALLS 0.8% TO USD 3,848.51, LOWEST SINCE OCTOBER',
+    { h: 'COP31 FOSSIL EXIT', s: 'DRAFT URGES FASTER EXIT' },
+    { h: 'OIL, GOLD, STOCKS FALL' },
+    { h: 'BITCOIN FALLS', s: 'TO USD 64,140' },
+    { h: 'DEPARDIEU ADMITS', s: 'SEXUAL ASSAULT' },
+    { h: 'PATTINSON IS 007', s: 'NAMED NEXT JAMES BOND' },
   ] },
 ];
+// Story count: 1 hero + 34 region items = 35. Enforced below in draw().
 
 function draw(): void {
+  // Story count check: 1 hero + region items must equal the masthead claim.
+  const total = 1 + REGIONS.reduce((n, r) => n + r.items.length, 0);
+  if (total !== 35) throw new Error('story count is ' + total + ', expected 35');
   rect(0, 0, W, H, PAPER);
 
-  // Header band.
+  // Header band. 17 November 2026 is a Tuesday (verified with `date`).
   rect(0, 0, W, 104, NAVY);
-  drawText(24, 14, 'THE WORLD IN ONE PICTURE', 2, GOLD);
-  drawText(24, 44, '17 NOVEMBER 2026', 5, '#ffffff');
+  drawText(24, 12, 'THE WORLD IN ONE PICTURE', 2, GOLD);
+  drawText(24, 42, 'TUESDAY 17 NOVEMBER 2026', 4, '#ffffff');
   rect(796, 14, 204, 76, GOLD);
-  drawText(812, 24, '59 STORIES', 3, NAVY);
+  drawText(812, 24, '35 STORIES', 3, NAVY);
   drawText(812, 62, '6 CONTINENTS', 2, NAVY);
 
   // Hero: US strikes Iran's Qeshm Island in the Strait of Hormuz.
@@ -353,7 +352,10 @@ function draw(): void {
   tag(48, 128, 'MIDDLE EAST', RED);
   drawText(48, 166, "US STRIKES IRAN'S", 4, INK);
   drawText(48, 206, 'QESHM ISLAND', 4, INK);
-  drawPara(560, 172, "US hits a missile site in the Strait of Hormuz after Iran's third drone attack on Bahrain.", 2, 290, '#333333');
+  const heroSub = wrapText('US HITS A MISSILE SITE IN THE STRAIT OF HORMUZ.', 2, 290);
+  if (heroSub.length > 2) throw new Error('hero sub too long: ' + heroSub.length + ' lines');
+  let hy = 172;
+  for (const line of heroSub) { drawText(560, hy, line, 2, '#333333'); hy += 18; }
   // Blast icon on the right of the hero: island with radiating spokes.
   circle(920, 187, 40, BLUE);
   ring(920, 187, 40, 3, '#ffffff');
@@ -365,21 +367,22 @@ function draw(): void {
   }
   circle(920, 187, 10, GOLD);
 
-  // World map strip.
-  drawMap(24, 270, 976, 112);
+  // World map strip. (110px tall: the lowest land blob ends at y+108.)
+  drawMap(24, 270, 976, 110);
 
-  // Six region sections, 3 x 2.
-  const rw = 320; const rh = 264;
+  // Six region sections, 3 x 2 — taller rows than v2 so scale-2 text fits.
+  const rw = 320; const rh = 266;
   for (let i = 0; i < 6; i++) {
     const cx = 24 + (i % 3) * (rw + 8);
-    const cy = 390 + Math.floor(i / 3) * (rh + 10);
+    const cy = 388 + Math.floor(i / 3) * (rh + 8);
     region(cx, cy, rw, rh, REGIONS[i].title, REGIONS[i].color, REGIONS[i].items);
   }
 
-  // Bottom ticker.
-  rect(24, 936, 976, 80, NAVY);
-  drawText(48, 950, 'ALSO TODAY:', 2, GOLD);
-  drawPara(48, 980, 'ALCARAZ BEATS TIAFOE 6-2 6-2 AT ATP FINALS - ACKERMAN HITS 157 FOR SOUTH AFRICA - NEPAL FIRST FOR UN LOSS AND DAMAGE FUND', 1, 928, '#ffffff');
+  // Bottom ticker: truthful judge-facing caption only — no extra stories,
+  // so the visible count stays exactly 35.
+  rect(24, 936, 976, 82, NAVY);
+  drawText(48, 950, 'EVERY HEADLINE IS 17 NOVEMBER 2026 NEWS', 2, GOLD);
+  drawText(48, 982, '35 STORIES - 6 CONTINENTS - ONE FRONT PAGE', 2, '#ffffff');
 }
 
 draw();

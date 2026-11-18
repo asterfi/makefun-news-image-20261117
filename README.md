@@ -37,6 +37,13 @@ mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
 
 ## The day it sums up — Tuesday 17 November 2026
 
+v3: 35 stories across 6 continents — the same verified stories, trimmed
+for legibility at ~300px: a hero, a world map, six region sections
+(Middle East & Gulf 6, Europe 6, Asia-Pacific 6, Americas 6,
+Africa & Oceania 5, Markets/Tech/Culture 5), all text at scale 2 or
+larger, no scale-1 micro-text. The v2 list below is kept as the source
+record of the verified stories.
+
 v2: 59 stories across 6 continents — a hero, a world map, six region
 sections (Middle East & Gulf 10, the rest 9 each), and a ticker.
 
